@@ -50,6 +50,7 @@ Python 3.8 trở lên
 Khuyến nghị sử dụng GPU (NVIDIA) để đạt tốc độ xử lý tốt nhất (cần cài đặt CUDA).
 
 Các bước cài đặt
+
 Bước 1: Clone dự án hoặc tải về máy.
 
 Bước 2: Cài đặt các thư viện phụ thuộc. Nên sử dụng môi trường ảo (Virtual Environment) để tránh xung đột thư viện.
