@@ -6,7 +6,6 @@ import threading
 import os
 import pyodbc
 
-# Import từ các module trong cấu trúc dự án của bạn
 from engines.yolo_engine import YoloTester
 
 class App:
@@ -15,30 +14,29 @@ class App:
         self.root.title("Hệ thống Giám sát Tàu biển - YOLO & OCR")
         self.root.geometry("1400x900")
         
-        # --- Biến cấu hình ---
         self.output_dir = tk.StringVar()
         self.model_path = tk.StringVar()
         self.video_path = tk.StringVar()
         self.conf_val = tk.DoubleVar(value=0.5)
         self.use_ocr_var = tk.BooleanVar(value=True) 
-        self.selected_track_id = None 
+        self.selected_track_id = None
+        self.tree_img_paths = {}
 
         self.setup_navbar()
         
-        # Container chứa các trang
         self.container = tk.Frame(self.root)
         self.container.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
 
-        # Khởi tạo các trang (Frames)
         self.frames = {}
         self.setup_monitoring_page()
         self.setup_database_page()
 
-        # Hiển thị trang mặc định
         self.show_frame("monitoring")
 
+        # Bind phím F5 toàn cục
+        self.root.bind("<F5>", lambda e: self.refresh_database())
+
     def setup_navbar(self):
-        """Tạo thanh điều hướng phía trên"""
         navbar = tk.Frame(self.root, bg="#2c3e50", height=50)
         navbar.pack(side=tk.TOP, fill=tk.X)
 
@@ -47,15 +45,12 @@ class App:
 
         tk.Button(navbar, text="🏠 Hệ thống giám sát", **nav_style, 
                   command=lambda: self.show_frame("monitoring")).pack(side=tk.LEFT)
-        
         tk.Button(navbar, text="📊 Cơ sở dữ liệu", **nav_style, 
                   command=lambda: self.show_frame("database")).pack(side=tk.LEFT)
-        
         tk.Button(navbar, text="🚪 Đăng xuất", **nav_style, 
                   command=self.logout).pack(side=tk.RIGHT)
 
     def show_frame(self, page_name):
-        """Chuyển đổi giữa các trang"""
         frame = self.frames[page_name]
         frame.tkraise()
         if page_name == "database":
@@ -69,29 +64,23 @@ class App:
         self.container.grid_rowconfigure(0, weight=1)
         self.container.grid_columnconfigure(0, weight=1)
 
-        # --- Control Panel (Bên phải) ---
         control_frame = tk.Frame(page, bg="#f0f0f0", width=350)
         control_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=10, pady=10)
         
         tk.Label(control_frame, text="BẢNG ĐIỀU KHIỂN", font=("Arial", 14, "bold"), bg="#f0f0f0").pack(pady=10)
 
-        # 1. Chọn Model
-        tk.Button(control_frame, text="📁 Chọn Folder chứa Models", command=self.choose_model).pack(fill=tk.X, pady=5)
+        tk.Button(control_frame, text="📁 Chọn Model", command=self.choose_model).pack(fill=tk.X, pady=5)
         tk.Label(control_frame, textvariable=self.model_path, fg="blue", font=("Arial", 9), wraplength=300, bg="#f0f0f0").pack()
 
-        # 2. Chọn Video
-        tk.Button(control_frame, text="🎬 Chọn Folder chứa Video", command=self.choose_video).pack(fill=tk.X, pady=5)
+        tk.Button(control_frame, text="🎬 Chọn Video", command=self.choose_video).pack(fill=tk.X, pady=5)
         tk.Label(control_frame, textvariable=self.video_path, fg="blue", font=("Arial", 9), wraplength=300, bg="#f0f0f0").pack()
 
-        # 3. Thư mục đầu ra
         tk.Button(control_frame, text="📂 Chọn Output Folder", command=self.choose_output_folder).pack(fill=tk.X, pady=5)
         tk.Label(control_frame, textvariable=self.output_dir, fg="green", font=("Arial", 9), wraplength=300, bg="#f0f0f0").pack()
 
-        # 4. Cấu hình tham số (Phần mới thêm theo yêu cầu)
-        config_group = tk.LabelFrame(control_frame, text="4. Cấu hình tham số", bg="#f0f0f0", padx=10, pady=10)
+        config_group = tk.LabelFrame(control_frame, text="Cấu hình tham số", bg="#f0f0f0", padx=10, pady=10)
         config_group.pack(fill=tk.X, pady=15)
 
-        # Row: Image Size
         row1 = tk.Frame(config_group, bg="#f0f0f0")
         row1.pack(fill=tk.X, pady=5)
         tk.Label(row1, text="Image Size:", bg="#f0f0f0", width=12, anchor="w").pack(side=tk.LEFT)
@@ -99,7 +88,6 @@ class App:
         self.img_size_entry.insert(0, "640")
         self.img_size_entry.pack(side=tk.LEFT)
 
-        # Row: Skip Frame
         row2 = tk.Frame(config_group, bg="#f0f0f0")
         row2.pack(fill=tk.X, pady=5)
         tk.Label(row2, text="Skip Frame:", bg="#f0f0f0", width=12, anchor="w").pack(side=tk.LEFT)
@@ -107,30 +95,26 @@ class App:
         self.skip_frame_entry.insert(0, "3")
         self.skip_frame_entry.pack(side=tk.LEFT)
 
-        # Row: Confidence Threshold slider
         tk.Label(config_group, text="Conf Thresh:", bg="#f0f0f0").pack(anchor="w", pady=(5, 0))
-        conf_slider = tk.Scale(config_group, from_=0.0, to=1.0, resolution=0.01, 
-                              orient=tk.HORIZONTAL, variable=self.conf_val, bg="#f0f0f0")
-        conf_slider.pack(fill=tk.X)
+        tk.Scale(config_group, from_=0.0, to=1.0, resolution=0.01, 
+                 orient=tk.HORIZONTAL, variable=self.conf_val, bg="#f0f0f0").pack(fill=tk.X)
 
         tk.Checkbutton(control_frame, text="Kích hoạt nhận diện OCR", variable=self.use_ocr_var, 
                        font=("Arial", 10, "italic"), bg="#f0f0f0").pack(pady=10)
 
-        # Nút Start/Stop
         tk.Button(control_frame, text="▶ BẮT ĐẦU", bg="#27ae60", fg="white", font=("Arial", 12, "bold"), 
                   height=2, command=self.start_process).pack(fill=tk.X, pady=5)
         tk.Button(control_frame, text="⏹ DỪNG", bg="#c0392b", fg="white", command=self.stop_process).pack(fill=tk.X)
 
-        # --- Khu vực hiển thị chi tiết ---
         self.detail_frame = tk.Frame(page, width=300, bg="white")
         self.detail_frame.pack(side=tk.RIGHT, fill=tk.Y, padx=5)
         tk.Label(self.detail_frame, text="CHI TIẾT TÀU", font=("Arial", 12, "bold"), bg="white").pack(pady=10)
         self.detail_canvas = tk.Canvas(self.detail_frame, width=280, height=200, bg="gray")
         self.detail_canvas.pack(pady=5)
-        self.detail_text = tk.Label(self.detail_frame, text="Click vào tàu trên video...", font=("Arial", 11), wraplength=280, justify=tk.LEFT, bg="white")
+        self.detail_text = tk.Label(self.detail_frame, text="Click vào tàu trên video...", 
+                                    font=("Arial", 11), wraplength=280, justify=tk.LEFT, bg="white")
         self.detail_text.pack()
 
-        # --- Khu vực hiển thị Video ---
         self.canvas_video = tk.Canvas(page, bg="black")
         self.canvas_video.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=10, pady=10)
         self.canvas_video.bind("<Button-1>", self.on_canvas_click)
@@ -141,30 +125,177 @@ class App:
         self.frames["database"] = page
         page.grid(row=0, column=0, sticky="nsew")
 
-        tk.Label(page, text="NHẬT KÝ HỆ THỐNG", font=("Arial", 18, "bold"), bg="#ecf0f1").pack(pady=20)
+        # Header + nút Refresh
+        header_frame = tk.Frame(page, bg="#ecf0f1")
+        header_frame.pack(fill=tk.X, padx=20, pady=15)
 
-        self.tree = ttk.Treeview(page, columns=("ID", "Class", "SoHieu", "Gio"), show='headings')
+        tk.Label(header_frame, text="NHẬT KÝ HỆ THỐNG", 
+                 font=("Arial", 18, "bold"), bg="#ecf0f1").pack(side=tk.LEFT)
+
+        self.refresh_status = tk.Label(header_frame, text="", fg="#27ae60", 
+                                        bg="#ecf0f1", font=("Arial", 10, "italic"))
+        self.refresh_status.pack(side=tk.RIGHT, padx=10)
+
+        tk.Button(header_frame, text="🔄  Làm mới  (F5)", 
+                  command=self.refresh_database,
+                  bg="#27ae60", fg="white", font=("Arial", 11, "bold"),
+                  padx=15, pady=5, relief="flat", cursor="hand2").pack(side=tk.RIGHT)
+
+        # Frame chính: bảng trái + ảnh phải
+        main_frame = tk.Frame(page, bg="#ecf0f1")
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=5)
+
+        # --- Treeview bên trái ---
+        tree_frame = tk.Frame(main_frame, bg="#ecf0f1")
+        tree_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        self.tree = ttk.Treeview(tree_frame, columns=("ID", "Class", "SoHieu", "Gio"), show='headings', height=20)
         self.tree.heading("ID", text="ID Tracking")
         self.tree.heading("Class", text="Loại tàu")
         self.tree.heading("SoHieu", text="Số hiệu")
         self.tree.heading("Gio", text="Giờ phát hiện")
-        
-        for col in ("ID", "Class", "SoHieu", "Gio"):
-            self.tree.column(col, anchor=tk.CENTER)
-        
-        self.tree.pack(fill=tk.BOTH, expand=True, padx=50, pady=20)
-        tk.Button(page, text="🔄 Làm mới", command=self.load_database_data, bg="#3498db", fg="white").pack(pady=10)
+        self.tree.column("ID", anchor=tk.CENTER, width=100)
+        self.tree.column("Class", anchor=tk.CENTER, width=150)
+        self.tree.column("SoHieu", anchor=tk.CENTER, width=120)
+        self.tree.column("Gio", anchor=tk.CENTER, width=200)
+
+        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.tree.bind("<<TreeviewSelect>>", self.on_tree_select)
+
+        # --- Panel xem ảnh bên phải ---
+        img_panel = tk.Frame(main_frame, bg="white", width=320, relief="ridge", bd=2)
+        img_panel.pack(side=tk.RIGHT, fill=tk.Y, padx=(15, 0))
+        img_panel.pack_propagate(False)
+
+        tk.Label(img_panel, text="🚢 ẢNH TÀU", font=("Arial", 13, "bold"), bg="white").pack(pady=12)
+
+        self.db_img_canvas = tk.Canvas(img_panel, width=290, height=260, bg="#dddddd")
+        self.db_img_canvas.pack(pady=5, padx=10)
+        self.db_img_canvas.create_text(145, 130, text="Chọn một hàng\nđể xem ảnh", 
+                                        fill="gray", font=("Arial", 12))
+
+        self.db_info_label = tk.Label(img_panel, text="", font=("Arial", 10), 
+                                       bg="white", wraplength=290, justify=tk.LEFT)
+        self.db_info_label.pack(pady=8, padx=10)
+
+        # === THÊM NÚT OCR LẠI Ở ĐÂY ===
+        tk.Button(img_panel, text="🔍 OCR LẠI (Thử lại số hiệu)", 
+                  command=self.manual_ocr_selected_ship, 
+                  bg="#e67e22", fg="white", font=("Arial", 11, "bold"),
+                  padx=10, pady=8).pack(pady=10)
+
+    def manual_ocr_selected_ship(self):
+        """Yêu cầu OCR lại cho tàu đang được chọn trong Treeview"""
+        selected = self.tree.selection()
+        if not selected:
+            messagebox.showwarning("Chưa chọn", "Vui lòng chọn một tàu trong bảng trước!")
+            return
+
+        item_id = selected[0]
+        values = self.tree.item(item_id, "values")
+        track_id_str = values[0]  # Cột ID Tracking
+
+        try:
+            track_id = int(track_id_str)
+        except ValueError:
+            messagebox.showerror("Lỗi", "ID Tracking không hợp lệ!")
+            return
+
+        # Ưu tiên dùng engine nếu đang chạy (dùng crop hiện tại)
+        if hasattr(self, 'engine') and self.engine is not None and track_id in self.engine.current_objects:
+            self.engine.request_manual_ocr(track_id)
+            messagebox.showinfo("Đã gửi", f"Đã yêu cầu OCR thủ công cho ID {track_id}.\nKết quả sẽ cập nhật trong bảng sau vài giây.")
+            return
+
+        # Nếu tàu không còn trong frame → dùng ảnh lưu từ DB (nếu có)
+        img_path = self.tree_img_paths.get(item_id, "")
+        if img_path and os.path.exists(img_path):
+            try:
+                crop_img = cv2.imread(img_path)
+                if crop_img is None:
+                    raise ValueError("Không đọc được ảnh")
+
+                # Gửi vào queue OCR (dùng engine nếu có, hoặc thông báo)
+                if hasattr(self, 'engine') and self.engine is not None:
+                    self.engine.ocr_queue.put((track_id, crop_img, True))
+                    messagebox.showinfo("Đã gửi", f"OCR thủ công từ ảnh lưu cho ID {track_id}.")
+                else:
+                    messagebox.showwarning("Cảnh báo", "Hệ thống giám sát chưa chạy.\nKhông thể OCR ngay lúc này, nhưng ảnh đã sẵn sàng.")
+            except Exception as e:
+                messagebox.showerror("Lỗi", f"Không thể load ảnh để OCR: {str(e)}")
+        else:
+            messagebox.showwarning("Không có ảnh", "Không tìm thấy ảnh crop của tàu này để OCR lại.")
+
+    def refresh_database(self):
+        """Load lại dữ liệu - dùng cho nút Refresh và phím F5"""
+        self.load_database_data()
+        self.refresh_status.config(text="✅ Đã làm mới!")
+        self.root.after(2000, lambda: self.refresh_status.config(text=""))
 
     def load_database_data(self):
-        for i in self.tree.get_children(): self.tree.delete(i)
+        for i in self.tree.get_children():
+            self.tree.delete(i)
+        self.tree_img_paths = {}
+
+        # Reset panel ảnh
+        self.db_img_canvas.delete("all")
+        self.db_img_canvas.create_text(145, 130, text="Chọn một hàng\nđể xem ảnh", 
+                                        fill="gray", font=("Arial", 12))
+        self.db_info_label.config(text="")
+
         try:
-            conn = pyodbc.connect('DRIVER={ODBC Driver 17 for SQL Server};SERVER=.\\SQLEXPRESS;DATABASE=shipdb;Trusted_Connection=yes;')
+            conn = pyodbc.connect(
+                'DRIVER={ODBC Driver 17 for SQL Server};'
+                'SERVER=.\\SQLEXPRESS;DATABASE=shipdb;Trusted_Connection=yes;'
+            )
             cursor = conn.cursor()
-            cursor.execute("SELECT track_id, class_name, ISNULL(so_hieu, 'N/A'), gio_phat_hien FROM shiplog ORDER BY gio_phat_hien DESC")
+            cursor.execute("""
+                SELECT track_id, class_name, ISNULL(so_hieu, 'N/A'), 
+                       gio_phat_hien, ISNULL(hinh_anh_path, '')
+                FROM shiplog 
+                ORDER BY gio_phat_hien DESC
+            """)
             for row in cursor.fetchall():
-                self.tree.insert("", tk.END, values=(row[0], row[1], row[2], row[3]))
+                item_id = self.tree.insert("", tk.END, values=(row[0], row[1], row[2], row[3]))
+                self.tree_img_paths[item_id] = row[4]
             conn.close()
-        except Exception as e: print(f"Lỗi DB: {e}")
+        except Exception as e:
+            print(f"Lỗi DB: {e}")
+
+    def on_tree_select(self, event):
+        """Click vào hàng -> hiển thị ảnh tàu bên phải"""
+        selected = self.tree.selection()
+        if not selected:
+            return
+
+        item_id = selected[0]
+        values = self.tree.item(item_id, "values")
+        img_path = self.tree_img_paths.get(item_id, "")
+
+        info = (f"🆔 ID Tracking : {values[0]}\n"
+                f"🚢 Loại tàu      : {values[1]}\n"
+                f"🔢 Số hiệu        : {values[2]}\n"
+                f"🕐 Giờ phát hiện: {values[3]}")
+        self.db_info_label.config(text=info)
+
+        self.db_img_canvas.delete("all")
+        if img_path and os.path.exists(img_path):
+            try:
+                img = cv2.imread(img_path)
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                img = cv2.resize(img, (290, 260))
+                self.tk_db_img = ImageTk.PhotoImage(image=Image.fromarray(img))
+                self.db_img_canvas.create_image(0, 0, anchor=tk.NW, image=self.tk_db_img)
+            except Exception as e:
+                self.db_img_canvas.create_text(145, 130, text="⚠️ Lỗi load ảnh", 
+                                                fill="red", font=("Arial", 12))
+        else:
+            self.db_img_canvas.create_text(145, 130, text="📷 Không có ảnh", 
+                                            fill="gray", font=("Arial", 12))
 
     # ================= LOGIC XỬ LÝ =================
     def choose_model(self):
@@ -183,7 +314,6 @@ class App:
         if not all([self.model_path.get(), self.video_path.get(), self.output_dir.get()]):
             messagebox.showwarning("Thiếu thông tin", "Vui lòng chọn đầy đủ Model, Video và Output!")
             return
-        
         try:
             img_sz = int(self.img_size_entry.get())
             skp = int(self.skip_frame_entry.get())
@@ -205,10 +335,10 @@ class App:
         self.thread.start()
 
     def stop_process(self):
-        if hasattr(self, 'engine'): self.engine.stop()
+        if hasattr(self, 'engine'):
+            self.engine.stop()
 
     def update_frame(self, frame, fps):
-        # Resize và hiển thị lên Canvas
         h, w = frame.shape[:2]
         ch, cw = self.canvas_video.winfo_height(), self.canvas_video.winfo_width()
         if ch > 0 and cw > 0:
@@ -221,7 +351,8 @@ class App:
             self.canvas_video.create_image(cw//2, ch//2, anchor=tk.CENTER, image=self.tk_img)
 
     def on_canvas_click(self, event):
-        if not hasattr(self, 'engine') or not hasattr(self, 'last_scale'): return
+        if not hasattr(self, 'engine') or not hasattr(self, 'last_scale'):
+            return
         x_click = (event.x - self.last_offset[0]) / self.last_scale
         y_click = (event.y - self.last_offset[1]) / self.last_scale
         for tid, obj in self.engine.current_objects.items():
@@ -233,7 +364,8 @@ class App:
                 break
 
     def show_crop(self, img_cv):
-        if img_cv is None or img_cv.size == 0: return
+        if img_cv is None or img_cv.size == 0:
+            return
         img = cv2.resize(cv2.cvtColor(img_cv, cv2.COLOR_BGR2RGB), (280, 200))
         self.tk_crop = ImageTk.PhotoImage(image=Image.fromarray(img))
         self.detail_canvas.create_image(0, 0, anchor=tk.NW, image=self.tk_crop)
