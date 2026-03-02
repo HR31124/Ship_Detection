@@ -19,28 +19,29 @@ Công cụ kiểm thử và đánh giá hiệu năng mô hình YOLO (Object Trac
 Dự án được tổ chức theo mô hình Modular để dễ dàng bảo trì và mở rộng:
 
 ```text
-project_root
+project_root/
 ├── engines/
 │   ├── __init__.py
-│   ├── yolo_engine.py      # Logic YOLO: load model, tracking, vẽ bounding box
-│   └── ocr_engine.py       # Logic OCR: nhận diện biển số/ID tàu (PaddleOCR)
+│   ├── yolo_engine.py # Logic YOLO: load model, tracking, vẽ bounding box
+│   └── ocr_engine.py # Logic YOLO: load model, tracking, vẽ bounding box
 ├── gui/
 │   ├── __init__.py
-│   ├── login.py            # Giao diện đăng nhập hệ thống
-│   └── main_window.py      # Giao diện chính điều khiển video và hiển thị kết quả
+│   ├── login.py # Giao diện đăng nhập hệ thống
+│   └── main_window.py # Giao diện chính điều khiển video và hiển thị kết quả
 ├── utils/
 │   ├── __init__.py
-│   ├── export_engine.py    # Xử lý logic xuất dữ liệu ra Excel/Database
-│   └── report_utils.py     # Các hàm hỗ trợ định dạng báo cáo (CSV, TXT)
+│   ├── export_engine.py # Xử lý logic xuất dữ liệu ra Excel/Database
+│   └── report_utils.py # Các hàm hỗ trợ định dạng báo cáo (CSV, TXT)
 ├── sql/
-│   └── lenhsql.sql         # File chứa cấu trúc bảng và câu lệnh khởi tạo Database
-
-├── video/                  # Chứa video mẫu để test (nên để file nhẹ)
+│   └── lenhsql.sql
+├── video/
 │   └── vid.mp4
-├── .gitignore              # Loại bỏ các file rác, __pycache__, venv
-├── main.py                 # File chạy chính (khởi động Login -> Main Window)
-├── README.md               # Tài liệu hướng dẫn cài đặt và sử dụng
-└── requirements.txt        # Danh sách thư viện: ultralytics, paddleocr, PyQt6/Tkinter...
+├── Output/                # Thư mục chứa kết quả sau khi chạy
+│   ├── ship_images/       # Ảnh tàu được crop từ YOLO
+├── .gitignore
+├── main.py
+├── README.md
+└── requirements.txt
 ```
 
 ## Yêu Cầu Hệ Thống & Cài Đặt
