@@ -1,16 +1,14 @@
 import tkinter as tk
 from tkinter import messagebox
-from utils.connect import get_db_connection
 
-class LoginWindow:
-    def __init__(self, root, success_callback):
+class LoginView:
+    def __init__(self, root, on_login_attempt_callback):
         self.root = root
         self.root.title("Ship_Detection")
         self.root.geometry("380x420")
         self.root.configure(bg="#f0f2f5")
-        self.success_callback = success_callback
+        self.on_login_attempt = on_login_attempt_callback
 
-        # Căn giữa cửa sổ
         self.root.update_idletasks()
         width = self.root.winfo_width()
         height = self.root.winfo_height()
@@ -44,19 +42,19 @@ class LoginWindow:
         self.btn_show = tk.Label(self.pw_container, text="👁", font=("Arial", 12),
                                  bg="#f5f6f7", fg="#606770", cursor="hand2")
         self.btn_show.pack(side="right", padx=10)
-        self.btn_show.bind("<Button-1>", lambda e: self.toggle_password())
+        self.btn_show.bind("<Button-1>", self.toggle_password)
 
         self.btn_login = tk.Button(self.frame, text="Đăng nhập", font=("Segoe UI", 12, "bold"),
                                    bg="#007bff", fg="white", relief="flat", bd=0,
-                                   cursor="hand2", command=self.check_login)
+                                   cursor="hand2", command=self._trigger_login)
         self.btn_login.pack(fill="x", ipady=10, pady=(25, 10))
 
         self.btn_login.bind("<Enter>", lambda e: self.btn_login.configure(bg="#0056b3"))
         self.btn_login.bind("<Leave>", lambda e: self.btn_login.configure(bg="#007bff"))
 
-        self.root.bind('<Return>', lambda event: self.check_login())
+        self.root.bind('<Return>', lambda event: self._trigger_login())
 
-    def toggle_password(self):
+    def toggle_password(self, event=None):
         if self.ent_pass.cget('show') == '*':
             self.ent_pass.config(show='')
             self.btn_show.config(text="🔒", fg="#007bff")
@@ -64,54 +62,16 @@ class LoginWindow:
             self.ent_pass.config(show='*')
             self.btn_show.config(text="👁", fg="#606770")
 
-    def check_login(self):
+    def _trigger_login(self):
         username = self.ent_user.get().strip()
         password = self.ent_pass.get()
+        self.on_login_attempt(username, password)
 
-        if not username or not password:
-            messagebox.showwarning("Chú ý", "Vui lòng nhập đầy đủ thông tin!")
-            return
+    def show_warning(self, title, message):
+        messagebox.showwarning(title, message)
 
-        conn = get_db_connection()
-        if not conn:
-            messagebox.showerror("Lỗi hệ thống", "Không thể kết nối đến cơ sở dữ liệu!")
-            return
+    def show_error(self, title, message):
+        messagebox.showerror(title, message)
 
-        try:
-            cursor = conn.cursor()
-
-            cursor.execute(
-                """
-                SELECT id, username, full_name, role 
-                FROM users 
-                WHERE username = ? AND password = ?
-                """,
-                (username, password)
-            )
-
-            row = cursor.fetchone()
-            if row:
-                # Có thể lưu thông tin user nếu cần (ví dụ: global hoặc truyền qua callback)
-                print(f"Đăng nhập thành công: {username} - Role: {row.role if row else 'user'}")
-                self.root.destroy()
-                self.success_callback()  # Mở giao diện chính
-            else:
-                messagebox.showerror("Lỗi", "Tài khoản hoặc mật khẩu không đúng!")
-
-        except Exception as e:
-            messagebox.showerror("Lỗi hệ thống", f"Lỗi khi truy vấn cơ sở dữ liệu:\n{str(e)}")
-        finally:
-            if conn:
-                conn.close()
-
-    def on_closing(self):
+    def close(self):
         self.root.destroy()
-
-
-if __name__ == "__main__":
-    root = tk.Tk()
-    def open_main_app():
-        print("Login thành công! → Mở giao diện chính...")
-    app = LoginWindow(root, open_main_app)
-    root.protocol("WM_DELETE_WINDOW", app.on_closing)
-    root.mainloop()

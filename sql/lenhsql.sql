@@ -1,62 +1,51 @@
-CREATE DATABASE shipdb;
-GO
-
-USE shipdb;
-GO
-
--- Bảng người dùng (không hash password)
 CREATE TABLE users (
-    id          INT IDENTITY(1,1) PRIMARY KEY,
-    username    NVARCHAR(50)  NOT NULL UNIQUE,
-    password    NVARCHAR(255) NOT NULL,          -- plain text cho demo
-    full_name   NVARCHAR(100) NULL,
-    role        NVARCHAR(50)  NULL DEFAULT 'user',
-    ngay_tao    DATETIME      DEFAULT GETDATE()
+    id          SERIAL PRIMARY KEY,
+    username    VARCHAR(50)  NOT NULL UNIQUE,
+    password    VARCHAR(255) NOT NULL,         
+    full_name   VARCHAR(100) NULL,
+    role        VARCHAR(50)  NULL DEFAULT 'user',
+    ngay_tao    TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP
 );
-GO
 
--- Insert admin mẫu (mật khẩu plain text)
 INSERT INTO users (username, password, full_name, role)
-VALUES ('admin', '123', 'Quản trị viên', 'admin');
-GO
+VALUES ('admin', '123', 'Quản trị viên', 'admin')
+ON CONFLICT (username) DO NOTHING;  
 
--- Bảng tàu (master data)
+
 CREATE TABLE ship (
-    ship_id         INT IDENTITY(1,1) PRIMARY KEY,
-    so_hieu         NVARCHAR(50)  NOT NULL UNIQUE,
-    class_name      NVARCHAR(100) NULL,
-    ten_tau         NVARCHAR(150) NULL,
-    mo_ta           NVARCHAR(500) NULL,
-    anh_dai_dien    NVARCHAR(255) NULL,
-    ngay_tao        DATETIME      DEFAULT GETDATE(),
-    ngay_cap_nhat   DATETIME      NULL
+    ship_id         SERIAL PRIMARY KEY,
+    so_hieu         VARCHAR(50)  NOT NULL UNIQUE,
+    class_name      VARCHAR(100) NULL,
+    ten_tau         VARCHAR(150) NULL,
+    mo_ta           VARCHAR(500) NULL,
+    anh_dai_dien    VARCHAR(255) NULL,
+    ngay_tao        TIMESTAMPTZ  DEFAULT CURRENT_TIMESTAMP,
+    ngay_cap_nhat   TIMESTAMPTZ  NULL
 );
-GO
 
--- Bảng nhật ký phát hiện (log từ YOLO + OCR)
 CREATE TABLE shiplog (
-    log_id          INT IDENTITY(1,1) PRIMARY KEY,
-    ship_id         INT           NULL,                 -- NULL lúc đầu, update sau khi OCR
-    track_id        INT           NOT NULL,
-    session_id      NVARCHAR(150) NULL,                 -- tên file video + thời gian hoặc UUID
-    gio_phat_hien   DATETIME      NOT NULL DEFAULT GETDATE(),
-    class_name      NVARCHAR(100) NULL,
-    confidence      FLOAT         NULL,
-    toc_do_tb       FLOAT         NULL,
-    hinh_anh_path   NVARCHAR(255) NULL,
-    do_tin_cay_ocr  FLOAT         NULL,
-    so_hieu_ocr     NVARCHAR(50)  NULL,
-    video_source    NVARCHAR(255) NULL,
-    video_frame     INT           NULL,
-    ghi_chu         NVARCHAR(500) NULL,
+    log_id          SERIAL PRIMARY KEY,
+    ship_id         INTEGER      NULL,
+    track_id        INTEGER      NOT NULL,
+    session_id      VARCHAR(150) NULL,
+    gio_phat_hien   TIMESTAMPTZ  NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    class_name      VARCHAR(100) NULL,
+    confidence      FLOAT        NULL,
+    toc_do_tb       FLOAT        NULL,
+    hinh_anh_path   VARCHAR(255) NULL,
+    do_tin_cay_ocr  FLOAT        NULL,
+    so_hieu_ocr     VARCHAR(50)  NULL,
+    video_source    VARCHAR(255) NULL,
+    video_frame     INTEGER      NULL,
+    ghi_chu         VARCHAR(500) NULL,
 
     CONSTRAINT FK_shiplog_ship 
         FOREIGN KEY (ship_id) REFERENCES ship(ship_id)
         ON UPDATE CASCADE 
-        ON DELETE SET NULL,
-
-    INDEX idx_ship_time     (ship_id, gio_phat_hien),
-    INDEX idx_track_session (track_id, session_id),
-    INDEX idx_sohieu_ocr    (so_hieu_ocr)
+        ON DELETE SET NULL
 );
-GO
+
+
+CREATE INDEX IF NOT EXISTS idx_ship_time      ON shiplog (ship_id, gio_phat_hien);
+CREATE INDEX IF NOT EXISTS idx_track_session  ON shiplog (track_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_sohieu_ocr     ON shiplog (so_hieu_ocr);

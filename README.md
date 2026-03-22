@@ -19,29 +19,40 @@ Công cụ kiểm thử và đánh giá hiệu năng mô hình YOLO (Object Trac
 Dự án được tổ chức theo mô hình Modular để dễ dàng bảo trì và mở rộng:
 
 ```text
-project_root
-├── engines/
-│   ├── __init__.py
-│   ├── yolo_engine.py      # Logic YOLO: load model, tracking, vẽ bounding box
-│   └── ocr_engine.py       # Logic OCR: nhận diện biển số/ID tàu (PaddleOCR)
-├── gui/
-│   ├── __init__.py
-│   ├── login.py            # Giao diện đăng nhập hệ thống
-│   └── main_window.py      # Giao diện chính điều khiển video và hiển thị kết quả
-├── utils/
-│   ├── __init__.py
-│   ├── export_engine.py    # Xử lý logic xuất dữ liệu ra Excel/Database
-│   └── report_utils.py     # Các hàm hỗ trợ định dạng báo cáo (CSV, TXT)
-├── Output/                # Thư mục chứa kết quả sau khi chạy
-│   ├── ship_images/       # Ảnh tàu được crop từ YOLO
-├── sql/
-│   └── lenhsql.sql         # File chứa cấu trúc bảng và câu lệnh khởi tạo Database
-├── video/                  # Chứa video mẫu để test (nên để file nhẹ)
-│   └── vid.mp4
-├── .gitignore              # Loại bỏ các file rác, __pycache__, venv
-├── main.py                 # File chạy chính (khởi động Login -> Main Window)
-├── README.md               # Tài liệu hướng dẫn cài đặt và sử dụng
-└── requirements.txt        # Danh sách thư viện: ultralytics, paddleocr, PyQt6/Tkinter...
+project_root/
+│
+├── src/
+│   ├── controllers/        # Xử lý logic trung gian 
+│   │   ├── __init__.py
+│   │   ├── login_controller.py
+│   │   └── main_controller.py
+│   │
+│   ├── engines/            # Xử lý AI / thuật toán
+│   │   ├── __init__.py
+│   │   ├── yolo_engine.py
+│   │   ├── ocr_engine.py
+│   │   └── speed_estimator.py
+│   │
+│   ├── models/             # Model AI 
+│   │
+│   ├── views/              # Giao diện (UI)
+│   │   ├── __init__.py
+│   │   ├── login_view.py
+│   │   └── main_view.py
+│   │
+│   ├── utils/              # Tiện ích (DB, export, helper)
+│   │   ├── __init__.py
+│   │   ├── connect.py
+│   │   ├── export_engine.py
+│   │   └── report_utils.py
+│   │
+│   └── main.py             # Entry point
+│
+├── output/                 # ảnh, video output               
+│
+├── requirements.txt        # thư viện Python
+├── .gitignore
+└── README.md
 ```
 
 ## Yêu Cầu Hệ Thống & Cài Đặt
@@ -59,17 +70,8 @@ Bước 2: Cài đặt các thư viện phụ thuộc. Nên sử dụng môi tr�
 pip install -r requirements.txt
 ```
 
-Bước 3: Tiến hành setup cơ sở dữ liệu
-Mở SSMS
-Chọn server tương ứng
-Nhấn New Query
-Copy toàn bộ nội dung file lenhsql.sql
-Nhấn Execute
-Thay servername ở máy bạn ở file connect.py
+Bước 3: Chạy ứng dụng
 
-```python
-self.server = '.\\SQLEXPRESS'
-```
 
 ## Hướng Dẫn Sử Dụng
 

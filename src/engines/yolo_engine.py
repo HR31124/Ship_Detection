@@ -4,10 +4,10 @@ import os
 import threading
 import queue
 from ultralytics import YOLO
-from engines.ocr_engine import ShipOCR
-from utils.report_utils import save_test_report
-from utils.connect import get_db_connection
-from engines.speed_estimator import SpeedEstimator
+from src.engines.ocr_engine import ShipOCR
+from src.utils.report_utils import save_test_report
+from src.utils.connect import get_db_connection, release_connection   # ← ĐÃ THÊM
+from src.engines.speed_estimator import SpeedEstimator
 
 class YoloTester:
     def __init__(self, model_path, input_source, output_folder,
@@ -52,7 +52,7 @@ class YoloTester:
 
         self.speed_estimator = None
 
-    # ==================== OCR WORKER ĐÃ SỬA HOÀN CHỈNH ====================
+    # ==================== OCR WORKER (ĐÃ SỬA CHO POOL) ====================
     def ocr_worker(self):
         print(">> OCR Worker started...")
         while True:
@@ -66,12 +66,11 @@ class YoloTester:
                     self.ocr_queue.task_done()
                     continue
 
-                # Lấy kết quả tốt nhất
                 best = max(results, key=lambda x: x.get("score", 0))
                 text = best["text"].strip().upper()
                 score = best["score"]
 
-                if len(text) < 3:  # bỏ qua số hiệu rác
+                if len(text) < 3:
                     self.ocr_queue.task_done()
                     continue
 
@@ -81,47 +80,35 @@ class YoloTester:
                     self.ocr_cache[track_id] = {"texts": [], "final": None}
                 self.ocr_cache[track_id]["final"] = text
 
-                # ==================== INSERT VÀO BẢNG SHIP ====================
                 conn = get_db_connection()
                 if conn:
                     try:
                         cursor = conn.cursor()
-
-                        # 1. Kiểm tra ship đã tồn tại chưa
-                        cursor.execute("SELECT ship_id FROM ship WHERE so_hieu = ?", (text,))
+                        cursor.execute("SELECT ship_id FROM ship WHERE so_hieu = %s", (text,))
                         row = cursor.fetchone()
 
                         if row:
                             ship_id = row[0]
-                            print(f">> Tàu đã tồn tại → ship_id = {ship_id}")
                         else:
-                            # 2. INSERT MỚI VÀO BẢNG SHIP
-                            # 2. INSERT MỚI VÀO BẢNG SHIP (Bỏ cột ten_tau và tham số tương ứng)
                             cursor.execute("""
                                 INSERT INTO ship (so_hieu, class_name, mo_ta, ngay_tao)
-                                OUTPUT INSERTED.ship_id
-                                VALUES (?, 'Unknown', ?, GETDATE())
+                                VALUES (%s, 'Unknown', %s, NOW())
+                                RETURNING ship_id
                             """, (text, f"Tàu được phát hiện tự động qua OCR: {text}"))
-
                             ship_id = cursor.fetchone()[0]
-                            print(f">> ✅ ĐÃ INSERT TÀU MỚI VÀO BẢNG SHIP → ship_id = {ship_id} | so_hieu = {text}")
-                        # 3. Update shiplog
+
                         cursor.execute("""
                             UPDATE shiplog 
-                            SET ship_id = ?, 
-                                so_hieu_ocr = ?, 
-                                do_tin_cay_ocr = ?
-                            WHERE track_id = ? AND session_id = ?
+                            SET ship_id = %s, so_hieu_ocr = %s, do_tin_cay_ocr = %s
+                            WHERE track_id = %s AND session_id = %s
                         """, (ship_id, text, score, int(track_id), self.session_id))
 
                         conn.commit()
-                        print(f">> ✅ Cập nhật shiplog thành công (ship_id = {ship_id})")
-
                     except Exception as db_e:
-                        print(f"❌ DB Error (ship/shiplog): {db_e}")
+                        print(f"❌ DB Error: {db_e}")
                         conn.rollback()
                     finally:
-                        conn.close()
+                        release_connection(conn)   # ← SỬA Ở ĐÂY
 
                 self.ocr_queue.task_done()
 
@@ -131,7 +118,6 @@ class YoloTester:
             except Exception as e:
                 print(f"OCR Worker Error: {e}")
 
-    # ==================== CÁC HÀM KHÁC GIỮ NGUYÊN (không thay đổi) ====================
     def request_manual_ocr(self, track_id):
         if track_id in self.current_objects:
             obj = self.current_objects[track_id]
@@ -146,7 +132,7 @@ class YoloTester:
             cursor = conn.cursor()
             cursor.execute("""
                 SELECT COUNT(*) FROM shiplog 
-                WHERE track_id = ? AND session_id = ?
+                WHERE track_id = %s AND session_id = %s
             """, (int(track_id), self.session_id))
             if cursor.fetchone()[0] > 0:
                 return
@@ -160,21 +146,18 @@ class YoloTester:
                 cv2.imwrite(img_path, crop_img)
 
             video_name = os.path.basename(self.input_source) if isinstance(self.input_source, str) else "live"
-            query = """
+            cursor.execute("""
                 INSERT INTO shiplog 
                 (ship_id, track_id, session_id, class_name, gio_phat_hien, hinh_anh_path, video_source, confidence)
-                VALUES (NULL, ?, ?, ?, GETDATE(), ?, ?, ?)
-            """
-            cursor.execute(query, (int(track_id), self.session_id, class_name, img_path, video_name, None))
+                VALUES (NULL, %s, %s, %s, NOW(), %s, %s, NULL)
+            """, (int(track_id), self.session_id, class_name, img_path, video_name))
             conn.commit()
-            print(f">> DB: Logged New Detection track_id={track_id}")
         except Exception as e:
             print(f"DB Insert Error: {e}")
         finally:
-            conn.close()
+            release_connection(conn)   # ← SỬA Ở ĐÂY
 
     def run(self, update_gui_callback):
-        # (giữ nguyên nguyên bản phần run của bạn, không thay đổi gì)
         cap = cv2.VideoCapture(self.input_source)
         if not cap.isOpened():
             print(">> Không mở được video / camera!")
@@ -236,14 +219,6 @@ class YoloTester:
                     current_ids_in_frame.add(track_id)
                     class_name = names[cls_idx]
 
-                    class_short_map = {
-                        "fishing_boat": "F",
-                        "speed_boat": "S",
-                        "passenger": "P",
-                        "passenger_ship": "P",
-                    }
-                    short_class = class_short_map.get(class_name.lower(), class_name[0].upper())
-
                     crop_to_use = None
                     if track_id not in self.current_objects:
                         h, w, _ = frame.shape
@@ -265,7 +240,7 @@ class YoloTester:
                         "speed_kmh": speed_kmh,
                     }
 
-                    short_label = f"id:{track_id} {short_class} {res.boxes.conf[i]:.2f}"
+                    short_label = f"id:{track_id} {self.class_short.get(class_name.lower(), class_name[0].upper())} {res.boxes.conf[i]:.2f}"
                     cv2.putText(annotated_frame, short_label,
                                 (x1 + 5, y1 - 35 if text_display != "..." else y1 - 25),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
@@ -280,6 +255,7 @@ class YoloTester:
                         cv2.putText(annotated_frame, text_speed, (x1, y_text),
                                     cv2.FONT_HERSHEY_DUPLEX, 0.85, (0, 0, 255), 3)
 
+            # ==================== UPDATE TỐC ĐỘ KHI MẤT TÀU ====================
             lost_ids = set(self.current_objects.keys()) - current_ids_in_frame
             conn = get_db_connection()
             if conn and lost_ids:
@@ -289,14 +265,14 @@ class YoloTester:
                         avg_speed = self.speed_estimator.get_average_kmh(tid)
                         if avg_speed > 0:
                             cursor.execute(
-                                "UPDATE shiplog SET toc_do_tb = ? WHERE track_id = ? AND session_id = ?",
+                                "UPDATE shiplog SET toc_do_tb = %s WHERE track_id = %s AND session_id = %s",
                                 (avg_speed, int(tid), self.session_id)
                             )
                     conn.commit()
                 except Exception as e:
                     print(f"DB Update Speed Error: {e}")
                 finally:
-                    conn.close()
+                    release_connection(conn)   # ← SỬA Ở ĐÂY
 
             self.current_objects = new_current_objects
             self.speed_estimator.cleanup(current_ids_in_frame)
@@ -314,10 +290,10 @@ class YoloTester:
             })
 
         print(">> Processing finished.")
-
         cap.release()
         out.release()
 
+        # ==================== FINAL UPDATE ====================
         conn = get_db_connection()
         if conn and self.current_objects:
             try:
@@ -326,19 +302,18 @@ class YoloTester:
                     avg_speed = self.speed_estimator.get_average_kmh(tid)
                     if avg_speed > 0:
                         cursor.execute(
-                            "UPDATE shiplog SET toc_do_tb = ? WHERE track_id = ? AND session_id = ?",
+                            "UPDATE shiplog SET toc_do_tb = %s WHERE track_id = %s AND session_id = %s",
                             (avg_speed, int(tid), self.session_id)
                         )
                 conn.commit()
             except Exception as e:
                 print(f"Final DB Update Error: {e}")
             finally:
-                conn.close()
+                release_connection(conn)   # ← SỬA Ở ĐÂY
 
         if data_report:
             processed_count = len(data_report)
             total_frames = frame_count
-
             ocr_data = {}
             for tid, info in self.ocr_cache.items():
                 final_text = info.get("final")
@@ -363,8 +338,6 @@ class YoloTester:
                 ocr_data=ocr_data
             )
             print(">> Báo cáo đã được tạo và lưu vào thư mục output.")
-        else:
-            print(">> Không có dữ liệu để tạo báo cáo.")
 
     def stop(self):
         self.stop_event = True
