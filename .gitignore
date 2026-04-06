@@ -18,8 +18,8 @@ BieuDo/
 module_yolo/
 reports/
 output/
-video/
-
+videos/
+venv/
 *.tmp
 *.log
 
